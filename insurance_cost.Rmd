@@ -1,0 +1,243 @@
+#Authors: Desiree Gonzales, Daniela Nunez, Nils Kessler, Lili Balazs
+
+file.choose()
+
+
+insurance <- read.csv("insurance.csv")
+
+insurance
+
+# get column names
+
+names(insurance)
+
+summary(insurance)
+
+
+# explore structure of data frame columns
+
+str(insurance)
+
+# check null values in dataset
+
+colSums(is.na(insurance)) 
+
+# hitograms of the columns
+
+layout(matrix(1:6, 3, 2))
+hist(insurance$charges, main = "Histogram Charges")
+hist(insurance$bmi, main = "Histogram BMI")
+hist(insurance$age, main = "Histogram Age")
+barplot(table(insurance$children), main = "Children")
+barplot(table(insurance$smoker), main = "Smoker")
+barplot(table(insurance$region), main = "Region")
+
+
+
+# change "sex", "smoker" and "region" variable into factors
+
+insurance[,"sex"] <- as.factor(insurance[,"sex"])
+insurance[,"smoker"] <- as.factor(insurance[,"smoker"])
+insurance[,"region"] <- as.factor(insurance[,"region"])
+
+# create a column containing the log of the charges column
+
+insurance[,"log_charges"] <- log(insurance[,"charges"])
+head(insurance, 3)
+
+# standardize bmi
+
+insurance[,"bmi"] <- (insurance[,"bmi"] - mean(insurance[,"bmi"])) / sd(insurance[,"bmi"])
+
+
+# installing packages
+
+install.packages("lmtest")
+install.packages("sandwich")
+install.packages("corrplot")
+
+# load libraries
+
+library("sandwich")
+library("lmtest")
+
+# fit multiple regression model(selected final model after trials)
+
+final_model <- lm(charges ~ age + bmi + children + smoker + region + bmi*smoker, 
+data = insurance) 
+
+
+# see statistical summary of the model
+
+summary(final_model)
+
+
+# create matrix
+
+X <- model.matrix(final_model, data = insurance)
+X[1, ]
+
+
+# show multicollinearity
+
+library(corrplot)
+corrplot(cor(X[, -1]), type = "lower")
+
+# robust t-test
+
+coeftest(final_model, vcov = vcovHC(final_model, type = "HC0"))
+
+
+# robust F-Test with Waldtest
+
+waldtest(final_model)
+
+
+# check assumptions of model based on the following plots
+
+layout(matrix(1:6, 3, 2))
+plot(final_model, which = 1:5)
+
+
+#testing other models first
+
+
+log_simple_model <- lm(log_charges ~ age + sex + bmi + children + smoker + region, data = insurance) 
+
+
+summary(log_simple_model)
+
+layout(matrix(1:6, 3, 2))
+plot(log_simple_model, which = 1:5)
+
+interaction_model <- lm(charges ~ age + bmi + children + smoker + region + I(bmi^2) + bmi*smoker, data = insurance) 
+
+summary(interaction_model)
+
+plot(interaction_model, which = 1:2)
+
+
+
+log_interaction_model <- lm(log_charges ~ age + bmi + children + smoker + region + I(bmi^2) + bmi*smoker, data = insurance) 
+
+summary(log_interaction_model)
+
+plot(log_interaction_model, which = 1:2)
+
+# check assumptions of model based on the following plots
+layout(matrix(1:6, 3, 2))
+plot(log_interaction_model, which = 1:5)
+plot(log_simple_model, which = 1:2)
+
+#taking the log of charges does not add value to the model because it produces
+a lower r squared compared to previous model.
+
+lot(charges ~ smoker, data = insurance,
+col =c("blue", "red")[insurance$smoker], main = "Smoker and non-smoker charges")
+legend("topleft", col = c("blue", "red")[insurance$smoker], pch = 1,legend = levels(insurance$smoker), title= "Smoking habit")
+
+
+#Cook's plot for final model and investigating outliers
+
+plot(final_model, which=4)
+
+insurance[129,]
+insurance[1048,]
+insurance[1301,]
+
+
+#more plots
+
+plot(charges ~ fitted(final_model), data = insurance,col = c("blue", "red")[insurance$smoker], main = "Fitted Model Values vs Charges")
+legend("topleft", col = c("blue", "red")[insurance$smoker], pch = 1,legend = levels(insurance$smoker), title= "Smoking habit")
+
+
+## we can see some heteroskedasticity in this plot
+
+
+
+
+
+
+###predictions
+
+predict(final_model, insurance)
+
+
+
+dt <- sort(sample(nrow(insurance), nrow(insurance)*0.7))
+train <- insurance[dt, ]
+test <- insurance[-dt, ]
+
+
+
+
+predict(final_model, test)
+
+final_model2 <- lm(charges ~ age + bmi + children + smoker + region + bmi*smoker, data = train)
+
+
+prediction <- predict(final_model2, test)
+
+
+prediction
+
+outp <- as.data.frame(cbind(test$charges, prediction))
+outp
+
+
+
+ggplot(outp, aes(x=prediction, y=V1)) + geom_point() + geom_abline(intercept = 0, slope = 1, color = "green") +
+  labs(x='Predicted Values', y='Actual Values', title='Predicted vs. Actual Values of Insurance Charges')
+  
+
+###
+
+
+library(tidyverse)
+
+par(mfrow = c(1, 1));
+plot(outp$prediction - outp$V1, main = "Difference between actual and predicted for Final Model")
+
+###
+
+log_interaction_model = lm(log(charges) ~ age + bmi + children + smoker + region + I(bmi^2) + bmi*smoker, data = insurance) 
+
+
+
+model2 <- lm(log(charges) ~ age + bmi + children + smoker + region + I(bmi^2) + bmi*smoker, data = train)
+
+prediction2 <- predict(model2, test)
+
+
+prediction2
+
+outp2 <- as.data.frame(cbind(test$charges, prediction2))
+outp2
+
+
+
+par(mfrow = c(1, 1));
+plot(outp2$prediction2 - outp2$V1, main = "Difference between actual and predicted for Log Interaction Model")
+
+###
+
+log_simple_model <- lm(log_charges ~ age + sex + bmi + children + smoker + region, data = insurance) 
+
+model3 <- lm(log_charges ~ age + sex + bmi + children + smoker + region, data = insurance) 
+prediction3 <- predict(model3, test)
+
+
+prediction3
+
+outp3 <- as.data.frame(cbind(test$charges, prediction3))
+outp3
+
+
+
+
+
+
+
+
+
